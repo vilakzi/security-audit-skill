@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audit Console</title>
+<style>
+:root{--bg:#0A0A0A;--panel:#0D1B2A;--panel2:#12263a;--line:#1f3a55;--text:#e8edf2;--muted:#8fa3b8;--gold:#C9A84C;
+--crit:#ff5d5d;--high:#ff9b4a;--med:#e8c44a;--low:#5fb3ff;--info:#8fa3b8;--ok:#4cc38a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,Segoe UI,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+h1{font-size:16px;margin:0;color:var(--gold);letter-spacing:.04em}
+.path{color:var(--muted);font:12px ui-monospace,Consolas,monospace;word-break:break-all}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}.live.on .dot{background:var(--ok);animation:p 1.6s infinite}
+@keyframes p{50%{opacity:.3}}
+nav{display:flex;gap:4px;overflow-x:auto;padding:8px 12px;border-bottom:1px solid var(--line)}
+nav button{background:none;border:0;color:var(--muted);padding:8px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;font:inherit}
+nav button.active{background:var(--panel2);color:var(--gold)}
+nav .n{margin-left:6px;font-size:11px;background:var(--line);padding:1px 6px;border-radius:9px;color:var(--text)}
+main{padding:16px;max-width:1100px;margin:0 auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+.card .v{font-size:28px;font-weight:700}.card .l{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.bar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--line);margin:8px 0}
+.bar i{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--muted)}
+.legend b{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:middle}
+.row{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden}
+.row>summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.row>summary::-webkit-details-marker{display:none}
+.row .t{flex:1;min-width:200px;font-weight:600}
+.row .body{padding:0 14px 14px;border-top:1px solid var(--line)}
+.pill{font-size:11px;padding:2px 8px;border-radius:9px;font-weight:700;text-transform:uppercase;color:#0A0A0A}
+.critical{background:var(--crit)}.high{background:var(--high)}.medium{background:var(--med)}.low{background:var(--low)}.informational{background:var(--info)}
+.tag{font-size:11px;padding:2px 8px;border-radius:9px;border:1px solid var(--line);color:var(--muted)}
+h3{color:var(--gold);font-size:12px;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 4px}
+p{margin:4px 0}
+code,pre{font:12px ui-monospace,Consolas,monospace}
+pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+.trace{font:12px ui-monospace,Consolas,monospace;color:var(--muted);margin:2px 0}
+.trace b{color:var(--gold)}
+input[type=search]{width:100%;background:var(--panel);border:1px solid var(--line);color:var(--text);padding:10px 12px;border-radius:10px;margin-bottom:12px;font:inherit}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.chip{background:var(--panel);border:1px solid var(--line);color:var(--muted);padding:4px 10px;border-radius:9px;cursor:pointer;font:inherit;font-size:12px}
+.chip.on{border-color:var(--gold);color:var(--gold)}
+.empty{text-align:center;color:var(--muted);padding:48px 16px;border:1px dashed var(--line);border-radius:12px}
+.empty code{color:var(--gold)}
+table{width:100%;border-collapse:collapse}td,th{padding:8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:13px}
+th{color:var(--muted);font-size:11px;text-transform:uppercase}
+@media(max-width:600px){main{padding:12px}}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>AUDIT CONSOLE</h1><div class="path" id="path">…</div></div>
+  <div class="live" id="live"><span class="dot"></span><span id="liveTxt">connecting</span></div>
+</header>
+<nav id="nav"></nav>
+<main id="main"></main>
+<script>
+const SEV=["critical","high","medium","low","informational"];
+const SEVCOL={critical:"var(--crit)",high:"var(--high)",medium:"var(--med)",low:"var(--low)",informational:"var(--info)"};
+const STCOL={covered:"var(--ok)",candidate:"var(--high)",in_progress:"var(--low)",planned:"var(--info)",blocked:"var(--crit)",deferred:"var(--med)",not_applicable:"var(--line)",out_of_scope:"var(--line)"};
+let S=null,tab="overview",q="",sevFilter=new Set(),stFilter=new Set();
+try{tab=localStorage.getItem("tab")||"overview"}catch(e){}
+const ESC={"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>ESC[c]);
+const by=v=>S.findings.filter(f=>f.verdict===v);
+const sev=f=>(f.severity&&f.severity.overall_severity)||"informational";
+
+function tabs(){return[
+ ["overview","Overview",""],["findings","Confirmed",by("confirmed").length],["needs","Needs validation",by("needs_validation").length],
+ ["rejected","Rejected",by("rejected").length],["coverage","Coverage",S.ledger.length],["docs","Reports",""]];}
+function renderNav(){
+ document.getElementById("nav").innerHTML=tabs().map(([k,l,n])=>`<button class="${k===tab?"active":""}" data-t="${k}">${l}${n!==""?`<span class="n">${n}</span>`:""}</button>`).join("");
+ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{tab=b.dataset.t;try{localStorage.setItem("tab",tab)}catch(e){}render()});}
+function empty(msg){return`<div class="empty">${msg}</div>`}
+function openState(){const o=new Set();document.querySelectorAll("details[open][data-k]").forEach(d=>o.add(d.dataset.k));return o}
+
+function overview(){
+ const c=by("confirmed"),counts={};SEV.forEach(s=>counts[s]=c.filter(f=>sev(f)===s).length);
+ const st={};S.ledger.forEach(u=>st[u.status]=(st[u.status]||0)+1);
+ const total=S.ledger.length,done=(st.covered||0)+(st.candidate||0)+(st.not_applicable||0)+(st.out_of_scope||0);
+ const pct=total?Math.round(done/total*100):0;
+ return`<div class="grid">
+ <div class="card"><div class="v" style="color:var(--gold)">${c.length}</div><div class="l">Confirmed</div></div>
+ <div class="card"><div class="v">${by("needs_validation").length}</div><div class="l">Needs validation</div></div>
+ <div class="card"><div class="v">${by("rejected").length}</div><div class="l">Rejected</div></div>
+ <div class="card"><div class="v">${pct}%</div><div class="l">Coverage resolved (${done}/${total})</div></div></div>
+ <div class="card" style="margin-bottom:16px"><div class="l">Confirmed by severity</div>
+  <div class="bar">${SEV.map(s=>counts[s]?`<i style="width:${counts[s]/c.length*100}%;background:${SEVCOL[s]}"></i>`:"").join("")}</div>
+  <div class="legend">${SEV.map(s=>`<span><b style="background:${SEVCOL[s]}"></b>${s} ${counts[s]}</span>`).join("")}</div></div>
+ <div class="card"><div class="l">Coverage ledger status</div>
+  <div class="bar">${Object.entries(st).map(([k,v])=>`<i style="width:${v/total*100}%;background:${STCOL[k]||"var(--info)"}"></i>`).join("")}</div>
+  <div class="legend">${Object.entries(st).map(([k,v])=>`<span><b style="background:${STCOL[k]||"var(--info)"}"></b>${esc(k)} ${v}</span>`).join("")}</div></div>
+ ${S.docs.architecture?`<h3>Architecture</h3><pre>${esc(S.docs.architecture.slice(0,6000))}</pre>`:""}`;}
+
+function filterBar(withSev){
+ return`<input type="search" id="q" placeholder="Search title, file, fingerprint…" value="${esc(q)}">`+
+ (withSev?`<div class="chips">${SEV.map(s=>`<button class="chip ${sevFilter.has(s)?"on":""}" data-sev="${s}">${s}</button>`).join("")}</div>`:"");}
+function wireFilters(){
+ const i=document.getElementById("q");
+ if(i){i.oninput=()=>{q=i.value;const p=i.selectionStart;render();const n=document.getElementById("q");n.focus();n.setSelectionRange(p,p)}}
+ document.querySelectorAll("[data-sev]").forEach(b=>b.onclick=()=>{const s=b.dataset.sev;sevFilter.has(s)?sevFilter.delete(s):sevFilter.add(s);render()});
+ document.querySelectorAll("[data-st]").forEach(b=>b.onclick=()=>{const s=b.dataset.st;stFilter.has(s)?stFilter.delete(s):stFilter.add(s);render()});}
+const match=f=>!q||JSON.stringify(f).toLowerCase().includes(q.toLowerCase());
+const traceHtml=t=>(t||[]).map(x=>`<div class="trace"><b>${esc(x.kind||"")}</b> ${esc(x.file)}:${esc(x.line)} — ${esc(x.description||x.scope||"")}</div>`).join("");
+const sec=(h,b)=>b?`<h3>${h}</h3>${b}`:"";
+
+function findingCard(f,open){
+ const k=f.fingerprint;
+ const s=f.verdict==="confirmed"?`<span class="pill ${sev(f)}">${sev(f)}</span>`:`<span class="tag">${esc(String(f.verdict).replace("_"," "))}</span>`;
+ let b=sec("Description",`<p>${esc(f.description)}</p>`);
+ if(f.verdict==="confirmed"){
+  b+=sec("Root cause",`<p>${esc(f.root_cause)}</p>`)+sec("Intended behavior",`<p>${esc(f.intended_behavior)}</p>`)
+   +sec("Trace",traceHtml(f.trace))+sec("Evidence",(f.evidence||[]).map(e=>`<div class="trace">${esc(e.file)}:${esc(e.line)} — ${esc(e.description)}</div>`).join(""))
+   +(f.severity?sec("Severity",`<p>Likelihood <b>${esc(f.severity.likelihood.score)}</b>: ${esc(f.severity.likelihood.reason)}</p><p>Impact <b>${esc(f.severity.impact.score)}</b>: ${esc(f.severity.impact.reason)}</p>`):"")
+   +(f.confidence?sec("Confidence",`<p><b>${esc(f.confidence.score)}</b> — ${esc(f.confidence.reason)}</p>`):"")
+   +(f.execution?sec("Reproduction",`<p>${esc(f.execution.attacker_perspective)}</p><pre>${esc((f.execution.payloads||[]).join("\n"))}</pre><pre>${esc((f.execution.instructions||[]).map((x,i)=>`${i+1}. ${x}`).join("\n"))}</pre><p><b>Observed:</b> ${esc(f.execution.observed_result)}</p>`):"")
+   +(f.remediation?sec("Remediation",`<p>${esc(f.remediation.strategy)}</p>`+(f.remediation.code_changes||[]).map(c=>`<div class="trace">${esc(c.file_name)}</div><pre>${esc(c.fixed_code)}</pre>`).join("")):"");
+ }else{
+  b+=sec("Claimed root cause",`<p>${esc(f.claimed_root_cause)}</p>`)+sec("Trace",traceHtml(f.trace));
+  if(f.blockers)b+=sec("Blockers",`<pre>${esc(JSON.stringify(f.blockers,null,2))}</pre>`);
+  if(f.validation_plan)b+=sec("Validation plan",`<pre>${esc(typeof f.validation_plan==="string"?f.validation_plan:JSON.stringify(f.validation_plan,null,2))}</pre>`);
+  if(f.reason)b+=sec("Why rejected",`<p>${esc(f.reason)}</p>`);}
+ return`<details class="row" data-k="${esc(k)}" ${open.has(k)?"open":""}><summary>${s}<span class="t">${esc(f.title)}</span><span class="tag">${esc(k)}</span></summary><div class="body">${b}</div></details>`;}
+
+function list(verdict,withSev,msg){
+ const open=openState();
+ let items=by(verdict).filter(match);
+ if(withSev&&sevFilter.size)items=items.filter(f=>sevFilter.has(sev(f)));
+ if(withSev)items.sort((a,b)=>SEV.indexOf(sev(a))-SEV.indexOf(sev(b)));
+ return filterBar(withSev)+(items.length?items.map(f=>findingCard(f,open)).join(""):empty(msg));}
+
+function coverage(){
+ const states=[...new Set(S.ledger.map(u=>u.status))];
+ let items=S.ledger.filter(match);if(stFilter.size)items=items.filter(u=>stFilter.has(u.status));
+ return filterBar(false)+`<div class="chips">${states.map(s=>`<button class="chip ${stFilter.has(s)?"on":""}" data-st="${esc(s)}">${esc(s)}</button>`).join("")}</div>`+
+ (items.length?`<div class="card" style="overflow:auto"><table><tr><th>Unit</th><th>Status</th><th>Attack class</th><th>Agent</th><th>Unresolved</th></tr>${items.map(u=>`<tr><td><code>${esc(u.coverage_id)}</code></td><td><span class="tag" style="border-color:${STCOL[u.status]||"var(--line)"}">${esc(u.status)}</span></td><td>${esc(u.attack_class)}</td><td>${esc(u.agent_id||"—")}</td><td>${esc(Array.isArray(u.unresolved)?u.unresolved.join("; "):u.unresolved||"")}</td></tr>`).join("")}</table></div>`:empty("No coverage units match."));}
+
+function docs(){
+ const d=S.docs,parts=[["REPORT.md",d.report],["FINDINGS-DETAIL.md",d.detail],["NEEDS-VALIDATION.md",d.needs],["architecture.md",d.architecture]].filter(x=>x[1]);
+ return parts.length?parts.map(([n,t])=>`<details class="row"><summary><span class="t">${n}</span></summary><div class="body"><pre>${esc(t)}</pre></div></details>`).join(""):empty("Reports are written in Phase 6. Nothing yet.");}
+
+function render(){
+ if(!S)return;
+ document.getElementById("path").textContent=S.dir||"no run directory found";
+ if(!S.exists){document.getElementById("nav").innerHTML="";
+  document.getElementById("main").innerHTML=empty(`No audit run found under <code>${esc(S.root)}</code>.<br>Start your agent with <code>security audit this codebase</code> — this page fills in live.`);return;}
+ renderNav();
+ const y=scrollY,views={overview:overview,findings:()=>list("confirmed",true,"No confirmed findings yet."),needs:()=>list("needs_validation",false,"Nothing awaiting validation."),
+  rejected:()=>list("rejected",false,"No rejected candidates."),coverage:coverage,docs:docs};
+ document.getElementById("main").innerHTML=(views[tab]||overview)();
+ wireFilters();scrollTo(0,y);}
+
+async function load(){try{S=await (await fetch("/api/state")).json();render()}catch(e){}}
+function connect(){
+ const live=document.getElementById("live"),t=document.getElementById("liveTxt");
+ const es=new EventSource("/api/events");
+ es.onopen=()=>{live.classList.add("on");t.textContent="live"};
+ es.onmessage=load;
+ es.onerror=()=>{live.classList.remove("on");t.textContent="reconnecting"};}
+load();connect();
+</script>
+</body>
+</html>
