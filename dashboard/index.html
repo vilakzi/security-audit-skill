@@ -62,13 +62,14 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
 <script>
 const SEV=["critical","high","medium","low","informational"];
 const SEVCOL={critical:"var(--crit)",high:"var(--high)",medium:"var(--med)",low:"var(--low)",informational:"var(--info)"};
+const stcol=(k,d)=>Object.prototype.hasOwnProperty.call(STCOL,k)?STCOL[k]:d;
 const STCOL={covered:"var(--ok)",candidate:"var(--high)",in_progress:"var(--low)",planned:"var(--info)",blocked:"var(--crit)",deferred:"var(--med)",not_applicable:"var(--line)",out_of_scope:"var(--line)"};
 let S=null,tab="overview",q="",sevFilter=new Set(),stFilter=new Set();
 try{tab=localStorage.getItem("tab")||"overview"}catch(e){}
 const ESC={"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>ESC[c]);
 const by=v=>S.findings.filter(f=>f.verdict===v);
-const sev=f=>(f.severity&&f.severity.overall_severity)||"informational";
+const sev=f=>{const v=f.severity&&f.severity.overall_severity;return SEV.includes(v)?v:"informational";};
 
 function tabs(){return[
  ["overview","Overview",""],["findings","Confirmed",by("confirmed").length],["needs","Needs validation",by("needs_validation").length],
@@ -93,8 +94,8 @@ function overview(){
   <div class="bar">${SEV.map(s=>counts[s]?`<i style="width:${counts[s]/c.length*100}%;background:${SEVCOL[s]}"></i>`:"").join("")}</div>
   <div class="legend">${SEV.map(s=>`<span><b style="background:${SEVCOL[s]}"></b>${s} ${counts[s]}</span>`).join("")}</div></div>
  <div class="card"><div class="l">Coverage ledger status</div>
-  <div class="bar">${Object.entries(st).map(([k,v])=>`<i style="width:${v/total*100}%;background:${STCOL[k]||"var(--info)"}"></i>`).join("")}</div>
-  <div class="legend">${Object.entries(st).map(([k,v])=>`<span><b style="background:${STCOL[k]||"var(--info)"}"></b>${esc(k)} ${v}</span>`).join("")}</div></div>
+  <div class="bar">${Object.entries(st).map(([k,v])=>`<i style="width:${v/total*100}%;background:${stcol(k,"var(--info)")}"></i>`).join("")}</div>
+  <div class="legend">${Object.entries(st).map(([k,v])=>`<span><b style="background:${stcol(k,"var(--info)")}"></b>${esc(k)} ${v}</span>`).join("")}</div></div>
  ${S.docs.architecture?`<h3>Architecture</h3><pre>${esc(S.docs.architecture.slice(0,6000))}</pre>`:""}`;}
 
 function filterBar(withSev){
@@ -138,7 +139,7 @@ function coverage(){
  const states=[...new Set(S.ledger.map(u=>u.status))];
  let items=S.ledger.filter(match);if(stFilter.size)items=items.filter(u=>stFilter.has(u.status));
  return filterBar(false)+`<div class="chips">${states.map(s=>`<button class="chip ${stFilter.has(s)?"on":""}" data-st="${esc(s)}">${esc(s)}</button>`).join("")}</div>`+
- (items.length?`<div class="card" style="overflow:auto"><table><tr><th>Unit</th><th>Status</th><th>Attack class</th><th>Agent</th><th>Unresolved</th></tr>${items.map(u=>`<tr><td><code>${esc(u.coverage_id)}</code></td><td><span class="tag" style="border-color:${STCOL[u.status]||"var(--line)"}">${esc(u.status)}</span></td><td>${esc(u.attack_class)}</td><td>${esc(u.agent_id||"—")}</td><td>${esc(Array.isArray(u.unresolved)?u.unresolved.join("; "):u.unresolved||"")}</td></tr>`).join("")}</table></div>`:empty("No coverage units match."));}
+ (items.length?`<div class="card" style="overflow:auto"><table><tr><th>Unit</th><th>Status</th><th>Attack class</th><th>Agent</th><th>Unresolved</th></tr>${items.map(u=>`<tr><td><code>${esc(u.coverage_id)}</code></td><td><span class="tag" style="border-color:${stcol(u.status,"var(--line)")}">${esc(u.status)}</span></td><td>${esc(u.attack_class)}</td><td>${esc(u.agent_id||"—")}</td><td>${esc(Array.isArray(u.unresolved)?u.unresolved.join("; "):u.unresolved||"")}</td></tr>`).join("")}</table></div>`:empty("No coverage units match."));}
 
 function docs(){
  const d=S.docs,parts=[["REPORT.md",d.report],["FINDINGS-DETAIL.md",d.detail],["NEEDS-VALIDATION.md",d.needs],["architecture.md",d.architecture]].filter(x=>x[1]);
